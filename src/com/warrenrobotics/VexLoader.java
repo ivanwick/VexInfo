@@ -13,12 +13,10 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalAccessor;
 import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Date;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 public class VexLoader {
 
@@ -81,8 +79,7 @@ public class VexLoader {
         //Print out county
         System.out.printf("Country: %s\n", eventJson.getString("loc_country"));
         //Set event date(only grab start day, ignore time)
-        //Format: YYYY-MM-DD
-        String eventDate = eventJson.getString("start").split("T")[0];
+        LocalDate eventDate = parseLocalDate(eventJson.getString("start"));
         //Check date to see if it first 4-week restriction
         checkDate(eventDate);
         //Build JSON array from SKU
@@ -115,6 +112,17 @@ public class VexLoader {
 	------------------------------------------------------------------------------------------
 	*/
 
+    private static LocalDate parseLocalDate(String dateStr) {
+        // https://stackoverflow.com/questions/25938560/parse-iso8601-date-string-to-date-with-utc-timezone
+        // https://stackoverflow.com/questions/9474121/i-want-to-get-year-month-day-etc-from-java-date-to-compare-with-gregorian-cal
+        DateTimeFormatter timeFormatter = DateTimeFormatter.ISO_DATE_TIME;
+        TemporalAccessor accessor = timeFormatter.parse(dateStr);
+        // Looks like VexDB is posting full DateTimes but in UTC timezone (+00:00)
+        // Assume this is unintentional and they mean local time
+        LocalDate localDate = Instant.from(accessor).atZone(ZoneId.systemDefault()).toLocalDate();
+        return localDate;
+    }
+
     private static String extractSKU(URL link) {
         //Get file path of url
         String[] filePath = link.getPath().split("/");
@@ -122,62 +130,22 @@ public class VexLoader {
         return filePath[filePath.length - 1].replace(".html", "");
     }
 
-    /**
-     * Checks the current date and compares it to the event date(more specifically,
-     * it compares it to the date exactly <u>28 days(4 weeks)</u> before the event date).
-     * <p>
-     * If the current date isn't within <u>4 weeks(28 days)</u> of the event date(or the event hasn't already happened), then
-     * the program will log it as an error and exit with an error code.
-     * </p>
-     * <p>
-     * If the current date is within <u>4 weeks</u> of the event date(or the event has already happened), then
-     * the program will continue.
-     * </p>
-     */
-    private static void checkDate(String eventDate){
-        //Print break
-        System.out.println("-----------------------------------------------------------");
-        //New Calendar instance
-        Calendar c = Calendar.getInstance();
-        //Set leniency to true, so program could subtract 4 weeks(28 days)
-        //from event date, without the calendar object throwing an exception
-        c.setLenient(true);
-        //Set to start of current day
-        c.set(Calendar.HOUR_OF_DAY, 0);
-        c.set(Calendar.MINUTE, 0);
-        c.set(Calendar.SECOND, 0);
-        c.set(Calendar.MILLISECOND, 0);
-        //Put into date object
-        Date today = c.getTime();
-        //Get event date in an array of strings(Format: YYYY-MM-DD)
-        String[] eventTimeInfoStr = eventDate.split("-");
-        //Initialize and convert string array to int array
-        int[] eventTimeInfo = new int[3];
-        //Loop through array to fill with integers
-        for(int i = 0; i < eventTimeInfo.length; i++) {
-            eventTimeInfo[i] = Integer.parseInt(eventTimeInfoStr[i]);
-        }
-        //Set calendar to event date
-        c.set(eventTimeInfo[0], eventTimeInfo[1], eventTimeInfo[2]);
-        //Get the actual date
-        Date eventDateActual = c.getTime();
-        //Set event date to exactly 4 weeks(28 days) before its date,
+    private static void checkDate(LocalDate eventDateActual) {
+        LocalDate today = LocalDate.now();
+
+        //Set specified date to exactly 4 weeks(28 days) before event date,
         //since that is what the program is checking for
-        c.set(eventTimeInfo[0], (eventTimeInfo[1] - 1), (eventTimeInfo[2] - 28));
-        //Check date with this specified date
-        Date dateSpecified = c.getTime();
+        LocalDate dateSpecified = eventDateActual.minusWeeks(4);
+
         //If current Date is greater than 4 weeks before the event
-        if(today.before(dateSpecified)) { //Date restriction not met
-            //Get difference of dates in milliseconds
-            long difInMs = dateSpecified.getTime() - today.getTime();
-            //Convert milliseconds to days
-            int dayDifference = (int) TimeUnit.MILLISECONDS.toDays(difInMs);
-            //Create a DateFormat object to get desired format for date
-            DateFormat df = DateFormat.getDateInstance(DateFormat.LONG);
+        if(today.isBefore(dateSpecified)) { //Date restriction not met
+
+            long dayDifference = today.until(dateSpecified, ChronoUnit.DAYS);
+
             //Print out dates
-            System.out.printf("Today:%s\n", df.format(today));
-            System.out.printf("Actual:%s\n", df.format(eventDateActual));
-            System.out.printf("Specified:%s\n", df.format(dateSpecified));
+            System.out.printf("Today:%s\n", today);
+            System.out.printf("Actual:%s\n", eventDateActual);
+            System.out.printf("Specified:%s\n", dateSpecified);
             //Log the issue
             LOGGER.error(String.format("Requirement not met. Wait (%d) days.", dayDifference));
             //Print out messages
@@ -189,14 +157,15 @@ public class VexLoader {
         } else { //Date restriction met
             //Format date Strings
             DateFormat df = DateFormat.getDateInstance(DateFormat.MEDIUM);
-            System.out.printf("Today's Date: %s%n", df.format(today));
-            System.out.printf("Event's Date(Actual): %s%n", df.format(eventDateActual));
-            System.out.printf("Event's Date(4 Weeks Prior): %s%n", df.format(dateSpecified));
+            System.out.printf("Today's Date: %s%n", today);
+            System.out.printf("Event's Date(Actual): %s%n", eventDateActual);
+            System.out.printf("Event's Date(4 Weeks Prior): %s%n", dateSpecified);
             System.out.println("DATE CHECK:TRUE");
             //Print break
             System.out.println("-----------------------------------------------------------");
             //Program continues running
         }
+
     }
 
     public static List<Team> loadTeams(String[] teamNames, String season) throws IOException {

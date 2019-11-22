@@ -1,5 +1,6 @@
 package com.warrenrobotics;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -8,11 +9,11 @@ import java.util.List;
 public class VexEvent {
     private String season;
     private String eventName;
-    private String eventDate;
+    private LocalDate eventDate;
     private List<Team> teamList;
     private String sku;
 
-    public VexEvent(String season, String eventName, String eventDate, List<Team> teamList, String sku) {
+    public VexEvent(String season, String eventName, LocalDate eventDate, List<Team> teamList, String sku) {
         this.season = season;
         this.eventName = eventName;
         this.eventDate = eventDate;
@@ -28,7 +29,7 @@ public class VexEvent {
         return eventName;
     }
 
-    public String getEventDate() {
+    public LocalDate getEventDate() {
         return eventDate;
     }
 
